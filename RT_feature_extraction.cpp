@@ -2,28 +2,20 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
-#include "opencv2/opencv.hpp"
-#include "opencv2/core/core.hpp"
-#include <opencv2/opencv.hpp>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-
-#include <assert.h>
-#include <fstream>
-#include <sstream>
-#include <iostream>
 #include <cmath>
 #include <sys/stat.h>
 #include <cmath>
 #include <time.h>
 #include <cuda_runtime_api.h>
+#include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <vector>
 #include <string>
 #include <utility>
+//#include "opencv2/opencv.hpp"
+//#include "opencv2/core/core.hpp"
 
 /////////////get class path////////////
 #include <unistd.h>
@@ -48,28 +40,22 @@ typedef std::pair<std::string,float> mate;
 }
 
 
-
-
 // stuff we know about the network and the caffe input/output blobs
-//static const int INPUT_H = 227;
-//static const int INPUT_W = 227;
-//static const int CHANNEL_NUM = 3;
-//static const int OUTPUT_SIZE = 1000;
 static const int INPUT_H = 192;
 static const int INPUT_W = 192;
 static const int CHANNEL_NUM = 3;
-static const int OUTPUT_SIZE = 384; //1498
+static const int OUTPUT_SIZE = 512; //1498
 
-const std::string Model_  = "fr_1498.caffemodel";
+const std::string Model_  = "caffe_Face_VGG16_1694_iter_14775.caffemodel";
 const std::string Deploy_ = "deploy.prototxt";
-const std::string Image_  = "3.jpg";
 const std::string Mean_   = "mean.binaryproto";
 const std::string Label_  = "labels.txt";
-const std::string Path_   = "./fr_model/";
+const std::string Path_   = "./fr_model_vgg16_1694/";
 
 const char* INPUT_BLOB_NAME = "data";
 //const char* OUTPUT_BLOB_NAME = "prob";
-const char* OUTPUT_BLOB_NAME = "fc11_dropout";
+const char* OUTPUT_BLOB_NAME = "pool6_dropout";
+//const char* OUTPUT_BLOB_NAME = "softmax";
 
 // Logger for GIE info/warning/errors
 class Logger : public ILogger			
@@ -288,19 +274,7 @@ t2=clock();
 	IExecutionContext *context = engine->createExecutionContext();
 	std::cout<<"engine builded!!!!"<< std::endl;
 
-t3=clock();	
-	// parse the mean file and 	subtract it from the image
-	ICaffeParser* parser = createCaffeParser();
-	IBinaryProtoBlob* meanBlob = parser->parseBinaryProto(locateFile(Mean_).c_str());
-	parser->destroy();
-
-t4=clock();
-
-	const float *meanData = reinterpret_cast<const float*>(meanBlob->getData());
-	meanBlob->destroy();
-
-
-t5=clock();
+t3=clock();
 ////============================================================================================
 ////============================================================================================
 ////============================================================================================
@@ -334,7 +308,7 @@ t5=clock();
 						{
 							file_feature.open(feature_path, std::ios::app);
 
-						//==================================================
+						//====================================================================================
 							cv::Mat sample,Img;
 							cv::Size input_geometry_;
 							input_geometry_ = cv::Size(INPUT_W, INPUT_H);
@@ -355,20 +329,39 @@ t5=clock();
 									}
 								}
 							}
+						//======================================================================================
+							// parse the mean file and 	subtract it from the image
+							ICaffeParser* parser = createCaffeParser();
+							IBinaryProtoBlob* meanBlob = parser->parseBinaryProto(locateFile(Mean_).c_str());
+							parser->destroy();
+							const float *meanData = reinterpret_cast<const float*>(meanBlob->getData());
+							
+							/*						
+							std::ofstream doc;
+							doc.open("/home/ubuntu/tensorrt2.1/RT_feature_extraction/kinpo2/doc.txt");
+							
+							for (int i = 0; i < INPUT_H*INPUT_W*CHANNEL_NUM; i++)
+							{	
+								doc<<meanData[i]<<"\n"; 							
+							}
+							doc.close();
+							*/					
+						//======================================================================================	
 							float data[INPUT_H*INPUT_W*CHANNEL_NUM];
 							for (int i = 0; i < INPUT_H*INPUT_W*CHANNEL_NUM; i++)
 							{	
-								data[i] = float(fileData[i])-meanData[i];								
+								data[i] = float(fileData[i])-meanData[i];					
 							}
 							
 							doInference(*context, data, prob, 1);
+							meanBlob->destroy();
 
-						//==================================================
+						//=======================================================================================
 							for(int j=0; j < OUTPUT_SIZE; j++)
 							{
 								file_feature << prob[j] << "\t";
 							}
-                                                //==================================================
+                                                //=======================================================================================
 							file_feature << "\n";
 							file_feature.close();
 
@@ -389,8 +382,7 @@ t5=clock();
 		closedir(dir);
 	}
 
-t6=clock();
-
+t4=clock();
 
 	// destroy the engine
 	context->destroy();
@@ -427,18 +419,13 @@ t6=clock();
 
 */
 
-
-
-
-t7=clock();
+t5=clock();
 
 	std::cout<<"t2-t1 time:"<<(double)(t2-t1)/(CLOCKS_PER_SEC)<<"s"<<" (create GIE model) "<<std::endl;
-	std::cout<<"t3-t2 time:"<<(double)(t3-t2)/(CLOCKS_PER_SEC)<<"s"<<" (ready image) "<<std::endl;
-	std::cout<<"t4-t3 time:"<<(double)(t4-t3)/(CLOCKS_PER_SEC)<<"s"<<" (parse mean file) "<<std::endl;
-	std::cout<<"t5-t4 time:"<<(double)(t5-t4)/(CLOCKS_PER_SEC)<<"s"<<" (subtract image) "<<std::endl;
-	std::cout<<"t6-t5 time:"<<(double)(t6-t5)/(CLOCKS_PER_SEC)<<"s"<<" (engine builded) "<<std::endl;
-	std::cout<<"t7-t6 time:"<<(double)(t7-t6)/(CLOCKS_PER_SEC)<<"s"<<" (doInference) "<<std::endl;
-	std::cout<<"t7-t1 time:"<<(double)(t7-t1)/(CLOCKS_PER_SEC)<<"s"<<std::endl;
+	std::cout<<"t3-t2 time:"<<(double)(t3-t2)/(CLOCKS_PER_SEC)<<"s"<<" (engine builded) "<<std::endl;
+	std::cout<<"t4-t3 time:"<<(double)(t4-t3)/(CLOCKS_PER_SEC)<<"s"<<" (feature extraction) "<<std::endl;
+	std::cout<<"t4-t3 time:"<<(double)(t5-t4)/(CLOCKS_PER_SEC)<<"s"<<" (destroy) "<<std::endl;
+	std::cout<<"t5-t1 time:"<<(double)(t5-t1)/(CLOCKS_PER_SEC)<<"s"<<" (total time) "<<std::endl;
 	return 0;
 }
 
